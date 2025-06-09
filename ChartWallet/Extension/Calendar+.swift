@@ -8,6 +8,7 @@
 import Foundation
 
 extension Calendar {
+    
     func dateBySettingTime(hour: Int, minute: Int = 0, second: Int = 0, of date: Date = Date()) -> Date? {
         var components = self.dateComponents([.year, .month, .day], from: date)
         components.hour = hour
@@ -15,4 +16,5 @@ extension Calendar {
         components.second = second
         return self.date(from: components)
     }
+    
 }

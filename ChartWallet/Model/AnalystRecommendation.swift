@@ -8,15 +8,50 @@
 import SwiftUICore
 
 struct AnalystRecommendation: Codable {
+    /// 주식 심볼
     let symbol: String
+    /// Strong Buy 추천 수
     let analystRatingsStrongBuy: Int?
+    /// Buy 추천 수
     let analystRatingsBuy: Int?
+    /// Hold 추천 수
     let analystRatingsHold: Int?
+    /// Sell 추천 수
     let analystRatingsSell: Int?
+    /// Strong Sell 추천 수
     let analystRatingsStrongSell: Int?
+    /// 평균 목표가 (USD)
     let analystTargetPrice: Double?
+    /// 최고 목표가 (USD)
     let analystTargetPriceHigh: Double?
+    /// 최저 목표가 (USD)
     let analystTargetPriceLow: Double?
+    
+    // Bulk API Response에서 변환하는 생성자 추가
+    init(from bulkResponse: AnalystRecommendationBulk_API.Response) {
+        self.symbol = bulkResponse.symbol
+        self.analystRatingsStrongBuy = bulkResponse.strongBuy
+        self.analystRatingsBuy = bulkResponse.buy
+        self.analystRatingsHold = bulkResponse.hold
+        self.analystRatingsSell = bulkResponse.sell
+        self.analystRatingsStrongSell = bulkResponse.strongSell
+        self.analystTargetPrice = bulkResponse.avgPriceTarget
+        self.analystTargetPriceHigh = bulkResponse.highPriceTarget
+        self.analystTargetPriceLow = bulkResponse.lowPriceTarget
+    }
+    
+    // 기존 생성자 유지
+    init(symbol: String, analystRatingsStrongBuy: Int?, analystRatingsBuy: Int?, analystRatingsHold: Int?, analystRatingsSell: Int?, analystRatingsStrongSell: Int?, analystTargetPrice: Double?, analystTargetPriceHigh: Double?, analystTargetPriceLow: Double?) {
+        self.symbol = symbol
+        self.analystRatingsStrongBuy = analystRatingsStrongBuy
+        self.analystRatingsBuy = analystRatingsBuy
+        self.analystRatingsHold = analystRatingsHold
+        self.analystRatingsSell = analystRatingsSell
+        self.analystRatingsStrongSell = analystRatingsStrongSell
+        self.analystTargetPrice = analystTargetPrice
+        self.analystTargetPriceHigh = analystTargetPriceHigh
+        self.analystTargetPriceLow = analystTargetPriceLow
+    }
     
     var averageRating: BuyComment {
         let strong = analystRatingsStrongBuy ?? 0

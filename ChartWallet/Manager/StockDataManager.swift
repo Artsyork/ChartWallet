@@ -7,12 +7,12 @@
 
 import Foundation
 
-class StockDataManager: NSObject, ObservableObject, URLSessionDelegate {
-    
+class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate {
     @Published var stocks: [StockItem] = []
     @Published var connectionStatus: ConnectionStatus = .disconnected
     @Published var lastAnalystUpdate: Date?
     @Published var nextAnalystUpdate: Date?
+    @Published var lastPriceUpdate: Date?
     
     private var webSocketTask: URLSessionWebSocketTask?
     private var urlSession: URLSession?
@@ -20,8 +20,10 @@ class StockDataManager: NSObject, ObservableObject, URLSessionDelegate {
     private let fmpAPIKey = BaseURL.FMP_API_KEY.rawValue
     
     private var analystUpdateTimer: Timer?
+    private var priceUpdateTimer: Timer?
     private let analystCacheKey = "AnalystDataCache"
     private let lastUpdateKey = "LastAnalystUpdate"
+    private let lastPriceUpdateKey = "LastPriceUpdate"
     
     private let stockSymbols = [
         ("AAPL", "Apple Inc."),
@@ -40,14 +42,13 @@ class StockDataManager: NSObject, ObservableObject, URLSessionDelegate {
     
     override init() {
         super.init()
+        
         setupStocks()
         setupSession()
         loadCachedAnalystData()
+        loadCachedPriceData()
         scheduleAnalystUpdates()
-    }
-    
-    deinit {
-        analystUpdateTimer?.invalidate()
+        scheduleRegularPriceUpdates()
     }
     
     private func setupStocks() {
@@ -59,7 +60,30 @@ class StockDataManager: NSObject, ObservableObject, URLSessionDelegate {
     private func setupSession() {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
-        urlSession = URLSession(configuration: config, delegate: self, delegateQueue: nil)
+        config.timeoutIntervalForResource = 60
+        config.waitsForConnectivity = true
+        
+        // WebSocket 전용 설정
+        config.httpAdditionalHeaders = [
+            "User-Agent": "StockChartApp/1.0"
+        ]
+        
+        urlSession = URLSession(
+            configuration: config,
+            delegate: self,
+            delegateQueue: OperationQueue()
+        )
+        
+        print("✅ URLSession 설정 완료")
+        print("🔍 TimeoutInterval: \(config.timeoutIntervalForRequest)초")
+    }
+    
+    func disconnect() {
+        webSocketTask?.cancel(with: .goingAway, reason: nil)
+        webSocketTask = nil
+        connectionStatus = .disconnected
+        analystUpdateTimer?.invalidate()
+        analystUpdateTimer = nil
     }
     
     // MARK: - Analyst Data Caching & Scheduling
@@ -171,28 +195,41 @@ class StockDataManager: NSObject, ObservableObject, URLSessionDelegate {
     }
     
     func connect() {
-        guard !finnhubAPIKey.isEmpty && finnhubAPIKey != "YOUR_FINNHUB_API_KEY" else {
+        guard !finnhubAPIKey.isEmpty else {
             print("❌ Finnhub API 키가 설정되지 않았습니다!")
             print("💡 https://finnhub.io 에서 무료 API 키를 발급받으세요")
             return
         }
         
-        // API 키 유효성 먼저 테스트
-        testFinnhubAPIKey { [weak self] isValid in
-            guard let self = self else { return }
-            
-            if isValid {
-                self.connectWebSocket()
-            } else {
-                print("❌ API 키가 유효하지 않습니다. WebSocket 연결을 중단합니다.")
+        print("🔍 설정된 API 키: \(String(finnhubAPIKey.prefix(20)))...")
+        
+        // 시장 시간 확인 후 연결 방식 결정
+        if isMarketOpen() {
+            print("✅ 미국 주식 시장 개장 시간 - WebSocket 연결 시도")
+            // API 키 유효성 먼저 테스트
+            testFinnhubAPIKey { [weak self] isValid in
+                guard let self = self else { return }
+                
+                if isValid {
+                    print("✅ API 키 검증 완료, WebSocket 연결 시작")
+                    self.connectWebSocket()
+                } else {
+                    print("❌ API 키가 유효하지 않습니다. REST API로 전환합니다.")
+                    self.fetchLatestPricesViaREST()
+                }
             }
+        } else {
+            print("⚠️ 미국 주식 시장 시간 외 - REST API로 주가 조회")
+            fetchLatestPricesViaREST()
         }
     }
     
     private func testFinnhubAPIKey(completion: @escaping (Bool) -> Void) {
         print("🔍 Finnhub API 키 유효성 테스트 중...")
         
-        let urlString = "https://finnhub.io/api/v1/quote?symbol=AAPL&token=\(finnhubAPIKey)"
+        let request = FinnhubQuoteAPI.Request(symbol: "AAPL", token: finnhubAPIKey)
+        let urlString = "\(FinnhubQuoteAPI.endPoint)?symbol=\(request.symbol)&token=\(request.token)"
+        
         guard let url = URL(string: urlString) else {
             completion(false)
             return
@@ -254,41 +291,71 @@ class StockDataManager: NSObject, ObservableObject, URLSessionDelegate {
     }
     
     private func connectWebSocket() {
-        guard let url = URL(string: "wss://ws.finnhub.io?token=\(finnhubAPIKey)") else {
-            print("❌ Invalid WebSocket URL")
+        // WebSocket API 모델 사용
+        let path = FinnhubWebSocket_API.Path(token: finnhubAPIKey)
+        let websocketURLString = "\(FinnhubWebSocket_API.endPoint)?token=\(path.token)"
+        
+        guard let url = URL(string: websocketURLString) else {
+            print("❌ WebSocket URL 생성 실패")
             return
         }
         
-        print("🔄 WebSocket 연결 시도 중...")
-        print("📍 URL: wss://ws.finnhub.io?token=\(String(finnhubAPIKey.prefix(10)))...")
+        print("🔄 WebSocket 연결 시도...")
+        print("📍 URL: \(url.absoluteString)")
         
         // 현재 시장 상태 체크
-        checkCurrentMarketStatus()
+        let _ = isMarketOpen()
         
         connectionStatus = .connecting
+        
+        // 기존 연결 정리
+        disconnect()
+        
+        // 새로운 WebSocket 작업 생성
         webSocketTask = urlSession?.webSocketTask(with: url)
-        webSocketTask?.resume()
+        guard let task = webSocketTask else {
+            print("❌ WebSocketTask 생성 실패")
+            connectionStatus = .disconnected
+            return
+        }
+        
+        print("✅ WebSocketTask 생성 성공")
+        task.resume()
+        print("✅ WebSocketTask 시작됨")
+        
+        // 메시지 수신 시작
         receiveMessage()
         
-        // 연결 타임아웃 체크 (10초)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+        // 짧은 타임아웃으로 빠른 실패 감지 (5초)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
             guard let self = self else { return }
             if self.connectionStatus == .connecting {
-                print("⏰ WebSocket 연결 타임아웃")
+                print("⏰ WebSocket 연결 타임아웃 (5초)")
+                print("💡 WebSocket 실패, REST API로 전환합니다")
                 self.connectionStatus = .disconnected
                 self.webSocketTask?.cancel()
+                
+                // REST API로 가격 데이터 가져오기
+                self.fetchLatestPricesViaREST()
             }
+        }
+        
+        // 시장 종료 시간에 자동으로 REST API로 전환
+        if isMarketOpen() {
+            scheduleMarketCloseCheck()
         }
     }
     
-    private func checkCurrentMarketStatus() {
+    private func isMarketOpen() -> Bool {
         let now = Date()
         let formatter = DateFormatter()
         formatter.timeZone = TimeZone(identifier: "America/New_York")
         formatter.dateFormat = "EEEE HH:mm"
         let currentTimeString = formatter.string(from: now)
         
-        let calendar = Calendar.current
+        var calendar = Calendar.current
+        let nyTimeZone = TimeZone(identifier: "America/New_York")!
+        calendar.timeZone = nyTimeZone
         let components = calendar.dateComponents([.weekday, .hour, .minute], from: now)
         let weekday = components.weekday ?? 0 // 1=일요일, 2=월요일, ..., 7=토요일
         let hour = components.hour ?? 0
@@ -299,24 +366,53 @@ class StockDataManager: NSObject, ObservableObject, URLSessionDelegate {
         let marketOpenMinutes = 9 * 60 + 30 // 09:30
         let marketCloseMinutes = 16 * 60 // 16:00
         
-        let isMarketHours = !isWeekend &&
-                           currentMinutes >= marketOpenMinutes &&
-                           currentMinutes < marketCloseMinutes
+        // 현재 시장 상태 체크
+        let isMarketHours = !isWeekend && currentMinutes >= marketOpenMinutes && currentMinutes < marketCloseMinutes
+        
+        print("🕐 현재 시간 (EST): \(currentTimeString)")
+        print("📅 요일: \(weekday) (1=일요일)")
+        print("🏢 주말 여부: \(isWeekend)")
+        print("⏰ 시장 시간 여부: \(isMarketHours)")
         
         if isWeekend {
-            print("⚠️ 주말 - 미국 주식 시장 휴장 (\(currentTimeString) EST)")
-            print("💡 실시간 데이터가 제한적일 수 있습니다")
+            print("⚠️ 주말 - 미국 주식 시장 휴장")
+            print("💡 실시간 데이터가 제한적입니다. 테스트 데이터를 사용해보세요.")
         } else if !isMarketHours {
-            print("⚠️ 미국 주식 시장 시간 외 (\(currentTimeString) EST)")
+            print("⚠️ 미국 주식 시장 시간 외")
             print("💡 장중 시간: 월-금 09:30-16:00 EST")
-            print("💡 실시간 데이터가 제한적일 수 있습니다")
+            print("💡 실시간 데이터가 제한적입니다. 테스트 데이터를 사용해보세요.")
         } else {
-            print("✅ 미국 주식 시장 개장 시간 (\(currentTimeString) EST)")
+            print("✅ 미국 주식 시장 개장 시간")
             print("💡 실시간 거래 데이터를 받을 수 있습니다")
         }
+        
+        return isMarketHours
     }
     
-    func disconnect() {
+    private func scheduleMarketCloseCheck() {
+        let calendar = Calendar.current
+        let nyTimeZone = TimeZone(identifier: "America/New_York")!
+        let now = Date()
+        
+        // 오늘 오후 4시 (시장 마감 시간) 계산
+        guard let marketClose = calendar.dateBySettingTime(hour: 16, minute: 0, of: now) else {
+            return
+        }
+        
+        // 시장 마감까지의 시간 계산
+        let timeUntilClose = marketClose.timeIntervalSince(now)
+        
+        if timeUntilClose > 0 {
+            print("⏰ 시장 마감까지 \(Int(timeUntilClose/60))분 남음, 자동 전환 예약")
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + timeUntilClose) { [weak self] in
+                guard let self = self else { return }
+                print("🔄 시장 마감 - WebSocket에서 REST API로 전환")
+                self.disconnect()
+                self.fetchLatestPricesViaREST()
+            }
+        }
+    
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         webSocketTask = nil
         connectionStatus = .disconnected
@@ -329,7 +425,8 @@ class StockDataManager: NSObject, ObservableObject, URLSessionDelegate {
         print("📋 구독할 종목: \(stocks.map { $0.symbol })")
         
         for (index, stock) in stocks.enumerated() {
-            let subscribeMessage = ["type": "subscribe", "symbol": stock.symbol]
+            let subscribeRequest = FinnhubWebSocket_API.Request(type: .subscribe, symbol: stock.symbol)
+            let subscribeMessage = ["type": subscribeRequest.type, "symbol": subscribeRequest.symbol]
             sendMessage(subscribeMessage)
             print("📤 [\(index+1)/\(stocks.count)] \(stock.symbol) 구독 요청")
             
@@ -429,11 +526,21 @@ class StockDataManager: NSObject, ObservableObject, URLSessionDelegate {
                     }
                 }
                 
-                // StockTrade 데이터 파싱 시도
-                let response = try JSONDecoder().decode(WebSocketMessage.self, from: data)
+                // API 모델을 사용한 데이터 파싱
+                let response = try JSONDecoder().decode(FinnhubWebSocket_API.Response.self, from: data)
                 
-                if let trades = response.data, !trades.isEmpty {
-                    print("✅ 거래 데이터 파싱 성공: \(trades.count)개")
+                if let tradeDataArray = response.data, !tradeDataArray.isEmpty {
+                    print("✅ 거래 데이터 파싱 성공: \(tradeDataArray.count)개")
+                    
+                    // API Response를 StockTrade로 변환
+                    let trades = tradeDataArray.map { tradeData in
+                        StockTrade(
+                            symbol: tradeData.s,
+                            price: tradeData.p,
+                            timestamp: Date(timeIntervalSince1970: TimeInterval(tradeData.t) / 1000.0),
+                            volume: tradeData.v
+                        )
+                    }
                     
                     for trade in trades {
                         print("📊 거래 상세: \(trade.symbol) - $\(trade.price) at \(trade.timestamp)")
@@ -479,7 +586,6 @@ class StockDataManager: NSObject, ObservableObject, URLSessionDelegate {
                 print("✅ \(trade.symbol) 종목 찾음 (인덱스: \(index))")
                 
                 let oldPrice = stocks[index].currentPrice
-                print("📊 \(trade.symbol) 이전 가격: $\(oldPrice) → 새 가격: $\(trade.price)")
                 
                 // 현재 가격 업데이트
                 stocks[index].currentPrice = trade.price
@@ -488,9 +594,7 @@ class StockDataManager: NSObject, ObservableObject, URLSessionDelegate {
                 if oldPrice > 0 {
                     stocks[index].priceChange = trade.price - oldPrice
                     stocks[index].priceChangePercent = ((trade.price - oldPrice) / oldPrice) * 100
-                    print("📊 \(trade.symbol) 변화: $\(stocks[index].priceChange) (\(stocks[index].priceChangePercent)%)")
                 } else {
-                    print("📊 \(trade.symbol) 첫 거래 데이터")
                     stocks[index].priceChange = 0
                     stocks[index].priceChangePercent = 0
                 }
@@ -500,8 +604,6 @@ class StockDataManager: NSObject, ObservableObject, URLSessionDelegate {
                 if stocks[index].chartData.count > 50 {
                     stocks[index].chartData = Array(stocks[index].chartData.suffix(50))
                 }
-                
-                print("✅ \(trade.symbol) 업데이트 완료 - 현재가: $\(stocks[index].currentPrice)")
             } else {
                 print("❌ \(trade.symbol) 종목을 찾을 수 없음")
                 print("📋 현재 종목 리스트: \(stocks.map { $0.symbol })")
@@ -512,41 +614,171 @@ class StockDataManager: NSObject, ObservableObject, URLSessionDelegate {
     }
     
     private func loadAnalystData() {
-        guard !fmpAPIKey.isEmpty && fmpAPIKey != "YOUR_FMP_API_KEY" else {
+        guard !fmpAPIKey.isEmpty else {
             print("❌ FMP API 키가 설정되지 않았습니다!")
             return
         }
         
-        print("🔍 애널리스트 데이터 로드 시작 (하루 2회 제한)")
-        
-        let group = DispatchGroup()
-        
-        for stock in stocks {
-            group.enter()
-            loadAnalystRecommendation(for: stock.symbol) {
-                group.leave()
+        print("🔍 애널리스트 데이터 벌크 로드 시작")
+                
+        loadAnalystRecommendationBulk { [weak self] in
+            DispatchQueue.main.async {
+                self?.saveAnalystDataToCache()
+                print("✅ 애널리스트 데이터 벌크 로드 완료")
             }
-        }
-        
-        group.notify(queue: .main) {
-            self.saveAnalystDataToCache()
-            print("✅ 모든 애널리스트 데이터 로드 완료")
         }
     }
     
-    private func loadAnalystRecommendation(for symbol: String, completion: @escaping () -> Void) {
-        let urlString = "https://financialmodelingprep.com/api/v3/analyst-stock-recommendations/\(symbol)?apikey=\(fmpAPIKey)"
+    private func loadAnalystRecommendationBulk(completion: @escaping () -> Void) {
+        // Bulk API 사용
+        let request = AnalystRecommendationBulk_API.Request(apikey: fmpAPIKey)
+        let urlString = "\(AnalystRecommendationBulk_API.endPoint)?apikey=\(request.apikey)"
         
         guard let url = URL(string: urlString) else {
+            print("❌ Bulk API URL 생성 실패")
             completion()
             return
         }
+        
+        print("📡 Bulk API 호출: \(urlString)")
         
         URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
             defer { completion() }
             
             if let error = error {
-                print("❌ \(symbol) 애널리스트 데이터 로드 실패: \(error.localizedDescription)")
+                print("❌ 애널리스트 벌크 데이터 로드 실패: \(error.localizedDescription)")
+                return
+            }
+            
+            guard let data = data else {
+                print("❌ 애널리스트 벌크 데이터 없음")
+                return
+            }
+            
+            // 응답 로깅
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("📊 Bulk API 응답 (처음 500자): \(String(responseString.prefix(500)))")
+            }
+            
+            do {
+                let bulkResponses = try JSONDecoder().decode([AnalystRecommendationBulk_API.Response].self, from: data)
+                print("✅ 벌크 응답 파싱 성공: \(bulkResponses.count)개 종목")
+                
+                // 현재 앱에서 사용하는 종목들만 필터링
+                let currentSymbols = self?.stocks.map { $0.symbol } ?? []
+                let filteredResponses = bulkResponses.filter { response in
+                    currentSymbols.contains(response.symbol)
+                }
+                
+                print("📋 현재 앱 종목 중 데이터 있는 종목: \(filteredResponses.map { $0.symbol })")
+                
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    
+                    // Bulk API 응답을 AnalystRecommendation으로 변환하여 적용
+                    for bulkResponse in filteredResponses {
+                        if let index = self.stocks.firstIndex(where: { $0.symbol == bulkResponse.symbol }) {
+                            let recommendation = AnalystRecommendation(from: bulkResponse)
+                            self.stocks[index].analystData = recommendation
+                            print("✅ \(bulkResponse.symbol) 애널리스트 데이터 업데이트 완료")
+                            
+                            // 데이터 확인 로그
+                            if let targetPrice = recommendation.analystTargetPrice {
+                                print("   📊 목표가: $\(targetPrice)")
+                            }
+                            print("   📈 평가: \(recommendation.averageRating)")
+                        }
+                    }
+                }
+                
+            } catch {
+                print("❌ 애널리스트 벌크 JSON 파싱 실패: \(error)")
+                if let responseString = String(data: data, encoding: .utf8) {
+                    print("❌ 응답 데이터: \(responseString)")
+                }
+            }
+        }.resume()
+    }
+    
+    // 수동 업데이트 (운영용)
+    func forceUpdateAnalystData() {
+        print("🔄 애널리스트 데이터 수동 업데이트...")
+        loadAnalystData()
+        calculateNextUpdateTime()
+    }
+    
+    // MARK: - REST API Price Updates
+    
+    private func scheduleRegularPriceUpdates() {
+        // 시장 개장 시간에는 5분마다, 시장 외 시간에는 30분마다 업데이트
+        let updateInterval: TimeInterval = isMarketOpen() ? 300.0 : 1800.0
+        
+        priceUpdateTimer = Timer.scheduledTimer(withTimeInterval: updateInterval, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            
+            // WebSocket 연결이 없는 경우에만 REST API 호출
+            if self.connectionStatus != .connected {
+                self.fetchLatestPricesViaREST()
+            }
+        }
+        
+        // 앱 시작 시 즉시 실행 (WebSocket 연결이 없는 경우)
+        if connectionStatus != .connected {
+            fetchLatestPricesViaREST()
+        }
+    }
+    
+    private func fetchLatestPricesViaREST() {
+        print("📡 REST API로 최신 가격 조회 중...")
+        
+        guard !finnhubAPIKey.isEmpty else {
+            print("❌ API 키가 없습니다")
+            return
+        }
+        
+        let group = DispatchGroup()
+        
+        for stock in stocks {
+            group.enter()
+            fetchStockQuote(symbol: stock.symbol) { [weak self] quote in
+                defer { group.leave() }
+                
+                guard let self = self,
+                      let index = self.stocks.firstIndex(where: { $0.symbol == stock.symbol }) else {
+                    return
+                }
+                
+                DispatchQueue.main.async {
+                    let oldPrice = self.stocks[index].currentPrice
+                    self.stocks[index].currentPrice = quote.currentPrice
+                    self.stocks[index].priceChange = quote.change
+                    self.stocks[index].priceChangePercent = quote.changePercent
+                    
+                    print("📊 \(stock.symbol): $\(oldPrice) → $\(quote.currentPrice) (\(quote.changePercent)%)")
+                }
+            }
+        }
+        
+        group.notify(queue: .main) {
+            self.lastPriceUpdate = Date()
+            self.savePriceDataToCache()
+            print("✅ 모든 주식 가격 업데이트 완료")
+        }
+    }
+    
+    private func fetchStockQuote(symbol: String, completion: @escaping (StockQuote) -> Void) {
+        // API 모델 사용
+        let request = FinnhubQuoteAPI.Request(symbol: symbol, token: finnhubAPIKey)
+        let urlString = "\(FinnhubQuoteAPI.endPoint)?symbol=\(request.symbol)&token=\(request.token)"
+        
+        guard let url = URL(string: urlString) else {
+            print("❌ \(symbol) URL 생성 실패")
+            return
+        }
+        
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            if let error = error {
+                print("❌ \(symbol) 조회 실패: \(error.localizedDescription)")
                 return
             }
             
@@ -556,91 +788,35 @@ class StockDataManager: NSObject, ObservableObject, URLSessionDelegate {
             }
             
             do {
-                let recommendations = try JSONDecoder().decode([AnalystRecommendation].self, from: data)
-                
-                if let recommendation = recommendations.first {
-                    DispatchQueue.main.async {
-                        if let index = self?.stocks.firstIndex(where: { $0.symbol == symbol }) {
-                            self?.stocks[index].analystData = recommendation
-                            print("✅ \(symbol) 애널리스트 데이터 업데이트 완료")
-                        }
-                    }
-                }
+                let apiResponse = try JSONDecoder().decode(FinnhubQuoteAPI.Response.self, from: data)
+                let quote = StockQuote(
+                    symbol: symbol,
+                    currentPrice: apiResponse.c,
+                    change: apiResponse.d,
+                    changePercent: apiResponse.dp
+                )
+                completion(quote)
             } catch {
                 print("❌ \(symbol) JSON 파싱 실패: \(error)")
             }
         }.resume()
     }
     
-    // 수동 업데이트 (테스트용)
-    func forceUpdateAnalystData() {
-        print("🔄 애널리스트 데이터 수동 업데이트...")
-        loadAnalystData()
-        calculateNextUpdateTime()
-    }
-    
-    func generateTestData() {
-        print("🧪 테스트 데이터 생성 시작")
-        
-        let testSymbols = ["AAPL", "GOOGL", "MSFT", "TSLA", "AMZN", "NVDA", "META", "NFLX"]
-        let basePrices: [String: Double] = [
-            "AAPL": 180.0,
-            "GOOGL": 140.0,
-            "MSFT": 380.0,
-            "TSLA": 250.0,
-            "AMZN": 150.0,
-            "NVDA": 450.0,
-            "META": 320.0,
-            "NFLX": 420.0
-        ]
-        
-        // 초기 가격 설정 (첫 실행시)
-        for symbol in testSymbols {
-            if let index = stocks.firstIndex(where: { $0.symbol == symbol }),
-               stocks[index].currentPrice == 0 {
-                let basePrice = basePrices[symbol] ?? 100.0
-                stocks[index].currentPrice = basePrice
-                print("📊 \(symbol) 초기 가격 설정: $\(basePrice)")
-            }
-        }
-        
-        Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] timer in
-            guard let self = self else {
-                timer.invalidate()
-                return
-            }
-            
-            print("🧪 테스트 데이터 생성 중...")
-            
-            for symbol in testSymbols {
-                if let index = self.stocks.firstIndex(where: { $0.symbol == symbol }) {
-                    let currentPrice = self.stocks[index].currentPrice
-                    let basePrice = currentPrice > 0 ? currentPrice : (basePrices[symbol] ?? 100.0)
-                    
-                    // 더 현실적인 가격 변동 (-2% ~ +2%)
-                    let changePercent = Double.random(in: -0.02...0.02)
-                    let newPrice = max(basePrice * (1 + changePercent), 0.01)
-                    
-                    let testTrade = StockTrade(
-                        symbol: symbol,
-                        price: newPrice,
-                        timestamp: Date(),
-                        volume: Int.random(in: 1000...50000)
-                    )
-                    
-                    print("🧪 생성된 테스트 거래: \(symbol) $\(basePrice) → $\(newPrice)")
-                    
-                    DispatchQueue.main.async {
-                        self.updateStockData([testTrade])
-                    }
-                }
-            }
+    private func loadCachedPriceData() {
+        if let lastUpdate = UserDefaults.standard.object(forKey: lastPriceUpdateKey) as? Date {
+            lastPriceUpdate = lastUpdate
+            print("📂 마지막 가격 업데이트: \(formatDate(lastUpdate))")
         }
     }
     
+    private func savePriceDataToCache() {
+        UserDefaults.standard.set(Date(), forKey: lastPriceUpdateKey)
+        print("💾 가격 데이터 캐시 저장")
+    }
 }
 
 extension StockDataManager {
+    
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
         DispatchQueue.main.async {
             self.connectionStatus = .connected
@@ -720,4 +896,5 @@ extension StockDataManager {
             }
         }
     }
+    
 }

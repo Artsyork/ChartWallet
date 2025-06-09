@@ -8,10 +8,15 @@
 import Foundation
 
 struct StockTrade: Codable, Identifiable {
+    /// 고유 식별자 (UUID 자동 생성)
     let id = UUID()
+    /// 주식 심볼 (예: "AAPL", "GOOGL")
     let symbol: String
+    /// 거래 가격 (USD)
     let price: Double
+    /// 거래 발생 시간
     let timestamp: Date
+    /// 거래량 (선택적)
     let volume: Int?
     
     enum CodingKeys: String, CodingKey {

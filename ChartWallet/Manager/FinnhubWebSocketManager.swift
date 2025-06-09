@@ -128,7 +128,7 @@ class FinnhubWebSocketManager: NSObject, ObservableObject {
     }
     
     func connect() {
-        guard !apiKey.isEmpty && apiKey != "YOUR_FINNHUB_API_KEY" else {
+        guard !apiKey.isEmpty else {
             print("❌ API 키가 설정되지 않았습니다!")
             return
         }

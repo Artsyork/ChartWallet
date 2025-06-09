@@ -20,7 +20,6 @@ struct ContentView: View {
                     lastAnalystUpdate: stockManager.lastAnalystUpdate,
                     nextAnalystUpdate: stockManager.nextAnalystUpdate,
                     onConnect: { stockManager.connect() },
-                    onTestData: { stockManager.generateTestData() },
                     onForceUpdate: { stockManager.forceUpdateAnalystData() }
                 )
                 

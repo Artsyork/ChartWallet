@@ -13,7 +13,6 @@ struct ConnectionHeaderView: View {
     let lastAnalystUpdate: Date?
     let nextAnalystUpdate: Date?
     let onConnect: () -> Void
-    let onTestData: () -> Void
     let onForceUpdate: () -> Void
     
     var body: some View {
@@ -50,16 +49,6 @@ struct ConnectionHeaderView: View {
                         .foregroundColor(.white)
                         .cornerRadius(6)
                     }
-                    
-                    Button("🧪 테스트") {
-                        onTestData()
-                    }
-                    .font(.caption)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.orange)
-                    .foregroundColor(.white)
-                    .cornerRadius(6)
                 }
             }
             
