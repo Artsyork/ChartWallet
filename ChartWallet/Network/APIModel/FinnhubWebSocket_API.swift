@@ -5,7 +5,7 @@
 //  Created by DY on 6/9/25.
 //
 
-/// WebSocket 실시간 거래 데이터 API
+/// (WebSocket) 실시간 거래 데이터 API
 struct FinnhubWebSocket_API: Codable {
     
     static let endPoint = "wss://ws.finnhub.io"

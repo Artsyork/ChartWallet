@@ -7,9 +7,9 @@
 
 import Foundation
 
-struct StockItem: Identifiable {
+struct StockItem: Identifiable, Codable {
     /// 고유 식별자 (UUID 자동 생성)
-    let id = UUID()
+    var id = UUID()
     /// 주식 심볼 (예: "AAPL")
     let symbol: String
     /// 회사명 (예: "Apple Inc.")
@@ -24,4 +24,6 @@ struct StockItem: Identifiable {
     var chartData: [StockTrade] = []
     /// 애널리스트 추천 데이터 (선택적)
     var analystData: AnalystRecommendation?
+    /// 인기 종목 여부
+    var isPopular: Bool = false
 }

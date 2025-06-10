@@ -12,40 +12,10 @@ struct ContentView: View {
     @State private var selectedStock: StockItem?
     
     var body: some View {
-        NavigationView {
-            VStack {
-                // 연결 상태 헤더
-                ConnectionHeaderView(
-                    status: stockManager.connectionStatus,
-                    lastAnalystUpdate: stockManager.lastAnalystUpdate,
-                    nextAnalystUpdate: stockManager.nextAnalystUpdate,
-                    onConnect: { stockManager.connect() },
-                    onForceUpdate: { stockManager.forceUpdateAnalystData() }
-                )
-                
-                // 주식 목록
-                StockListView(
-                    stocks: stockManager.stocks,
-                    onStockSelected: { stock in
-                        selectedStock = stock
-                    }
-                )
-            }
-            .navigationTitle("주식 실시간")
-            .navigationBarTitleDisplayMode(.large)
-            .preferredColorScheme(.dark)
-            .background(Color.black.ignoresSafeArea())
-            .onAppear {
-                stockManager.connect()
-            }
-            .sheet(item: $selectedStock) { stock in
-                StockDetailView(stock: stock)
-            }
-        }
-        .preferredColorScheme(.dark)
+        MainTabView()
     }
 }
 
-#Preview {
-    ContentView()
-}
+//#Preview {
+//    ContentView()
+//}

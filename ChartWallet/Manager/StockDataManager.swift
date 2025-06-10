@@ -3,6 +3,7 @@
 //  ChartWallet
 //
 //  Created by DY on 6/5/25.
+//  Updated by DY on 6/10/25.
 //
 
 import Foundation
@@ -16,8 +17,8 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
     
     private var webSocketTask: URLSessionWebSocketTask?
     private var urlSession: URLSession?
-    private let finnhubAPIKey = BaseURL.FINNHUB_API_KEY.rawValue
-    private let fmpAPIKey = BaseURL.FMP_API_KEY.rawValue
+    private let finnhubAPIKey = BaseURL.FINNHUB_API_KEY.url
+    private let fmpAPIKey = BaseURL.FMP_API_KEY.url
     
     private var analystUpdateTimer: Timer?
     private var priceUpdateTimer: Timer?
@@ -25,16 +26,8 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
     private let lastUpdateKey = "LastAnalystUpdate"
     private let lastPriceUpdateKey = "LastPriceUpdate"
     
-    private let stockSymbols = [
-        ("AAPL", "Apple Inc."),
-        ("GOOGL", "Alphabet Inc."),
-        ("MSFT", "Microsoft Corp."),
-        ("TSLA", "Tesla Inc."),
-        ("AMZN", "Amazon.com Inc."),
-        ("NVDA", "NVIDIA Corp."),
-        ("META", "Meta Platforms"),
-        ("NFLX", "Netflix Inc.")
-    ]
+    // 현재 추적 중인 종목 심볼들
+    private var trackedSymbols: [String] = []
     
     enum ConnectionStatus {
         case connected, disconnected, connecting
@@ -43,7 +36,6 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
     override init() {
         super.init()
         
-        setupStocks()
         setupSession()
         loadCachedAnalystData()
         loadCachedPriceData()
@@ -51,10 +43,90 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
         scheduleRegularPriceUpdates()
     }
     
-    private func setupStocks() {
-        stocks = stockSymbols.map { symbol, name in
-            StockItem(symbol: symbol, name: name)
+    // MARK: - Public Methods
+    
+    /// 추적할 종목 심볼들을 업데이트
+    func updateStockSymbols(_ symbols: [String]) {
+        let uniqueSymbols = Array(Set(symbols)).sorted()
+        
+        // 기존 종목들과 비교하여 변경사항이 있는지 확인
+        if trackedSymbols != uniqueSymbols {
+            trackedSymbols = uniqueSymbols
+            updateStocksList()
+            
+            // WebSocket이 연결되어 있다면 새로운 구독 설정
+            if connectionStatus == .connected {
+                resubscribeToStocks()
+            }
+            
+            // 애널리스트 데이터 업데이트
+            loadAnalystData()
         }
+    }
+    
+    /// 종목에 대한 회사명을 가져오기 (기본값 제공)
+    func getCompanyName(for symbol: String) -> String {
+        // 인기 종목들의 회사명 매핑
+        let companyNames: [String: String] = [
+            "AAPL": "Apple Inc.",
+            "GOOGL": "Alphabet Inc.",
+            "MSFT": "Microsoft Corp.",
+            "TSLA": "Tesla Inc.",
+            "AMZN": "Amazon.com Inc.",
+            "NVDA": "NVIDIA Corp.",
+            "META": "Meta Platforms",
+            "NFLX": "Netflix Inc.",
+            "GOOG": "Alphabet Inc. (Class C)",
+            "UBER": "Uber Technologies",
+            "AMD": "Advanced Micro Devices",
+            "INTC": "Intel Corp.",
+            "BABA": "Alibaba Group",
+            "COIN": "Coinbase Global",
+            "PLTR": "Palantir Technologies"
+        ]
+        
+        return companyNames[symbol] ?? "\(symbol) Inc."
+    }
+    
+    private func updateStocksList() {
+        var newStocks: [StockItem] = []
+        
+        for symbol in trackedSymbols {
+            // 기존 주식 데이터가 있다면 유지, 없다면 새로 생성
+            if let existingStock = stocks.first(where: { $0.symbol == symbol }) {
+                newStocks.append(existingStock)
+            } else {
+                let newStock = StockItem(
+                    symbol: symbol,
+                    name: getCompanyName(for: symbol)
+                )
+                newStocks.append(newStock)
+            }
+        }
+        
+        DispatchQueue.main.async { [weak self] in
+            self?.stocks = newStocks
+        }
+        
+        print("📋 추적 종목 업데이트: \(trackedSymbols)")
+    }
+    
+    private func resubscribeToStocks() {
+        print("🔄 종목 재구독 시작...")
+        
+        // 기존 구독 해제는 생략 (Finnhub에서는 새 구독이 기존 것을 덮어씀)
+        
+        // 새로운 종목들 구독
+        for symbol in trackedSymbols {
+            let subscribeRequest = FinnhubWebSocket_API.Request(type: .subscribe, symbol: symbol)
+            let subscribeMessage = ["type": subscribeRequest.type, "symbol": subscribeRequest.symbol]
+            sendMessage(subscribeMessage)
+            print("📤 \(symbol) 재구독 요청")
+            
+            Thread.sleep(forTimeInterval: 0.1) // 서버 부하 방지
+        }
+        
+        print("✅ 종목 재구독 완료")
     }
     
     private func setupSession() {
@@ -63,7 +135,6 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
         config.timeoutIntervalForResource = 60
         config.waitsForConnectivity = true
         
-        // WebSocket 전용 설정
         config.httpAdditionalHeaders = [
             "User-Agent": "StockChartApp/1.0"
         ]
@@ -75,7 +146,6 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
         )
         
         print("✅ URLSession 설정 완료")
-        print("🔍 TimeoutInterval: \(config.timeoutIntervalForRequest)초")
     }
     
     func disconnect() {
@@ -227,8 +297,8 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
     private func testFinnhubAPIKey(completion: @escaping (Bool) -> Void) {
         print("🔍 Finnhub API 키 유효성 테스트 중...")
         
-        let request = FinnhubQuoteAPI.Request(symbol: "AAPL", token: finnhubAPIKey)
-        let urlString = "\(FinnhubQuoteAPI.endPoint)?symbol=\(request.symbol)&token=\(request.token)"
+        let request = FinnhubQuote_API.Request(symbol: "AAPL", token: finnhubAPIKey)
+        let urlString = "\(FinnhubQuote_API.endPoint)?symbol=\(request.symbol)&token=\(request.token)"
         
         guard let url = URL(string: urlString) else {
             completion(false)
@@ -412,30 +482,27 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
                 self.fetchLatestPricesViaREST()
             }
         }
-    
-        webSocketTask?.cancel(with: .goingAway, reason: nil)
-        webSocketTask = nil
-        connectionStatus = .disconnected
-        analystUpdateTimer?.invalidate()
-        analystUpdateTimer = nil
     }
     
     private func subscribeToStocks() {
-        print("📤 주식 구독 시작...")
-        print("📋 구독할 종목: \(stocks.map { $0.symbol })")
+        guard !trackedSymbols.isEmpty else {
+            print("⚠️ 구독할 종목이 없습니다")
+            return
+        }
         
-        for (index, stock) in stocks.enumerated() {
-            let subscribeRequest = FinnhubWebSocket_API.Request(type: .subscribe, symbol: stock.symbol)
+        print("📤 주식 구독 시작...")
+        print("📋 구독할 종목: \(trackedSymbols)")
+        
+        for (index, symbol) in trackedSymbols.enumerated() {
+            let subscribeRequest = FinnhubWebSocket_API.Request(type: .subscribe, symbol: symbol)
             let subscribeMessage = ["type": subscribeRequest.type, "symbol": subscribeRequest.symbol]
             sendMessage(subscribeMessage)
-            print("📤 [\(index+1)/\(stocks.count)] \(stock.symbol) 구독 요청")
+            print("📤 [\(index+1)/\(trackedSymbols.count)] \(symbol) 구독 요청")
             
-            // 구독 요청 간격을 둠 (서버 부하 방지)
             Thread.sleep(forTimeInterval: 0.1)
         }
         
         print("✅ 모든 종목 구독 요청 완료")
-        print("⏳ 실시간 데이터 수신 대기 중...")
         
         // 30초 후에도 데이터가 없으면 알림
         DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
@@ -444,8 +511,6 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
             let stocksWithData = self.stocks.filter { $0.currentPrice > 0 }
             if stocksWithData.isEmpty {
                 print("⚠️ 30초 동안 실시간 데이터를 받지 못했습니다")
-                print("💡 시장 시간을 확인하거나 테스트 데이터를 사용해보세요")
-                print("💡 시장 시간: 월-금 09:30-16:00 EST")
             } else {
                 print("✅ \(stocksWithData.count)개 종목의 데이터 수신 중")
             }
@@ -630,72 +695,126 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
     }
     
     private func loadAnalystRecommendationBulk(completion: @escaping () -> Void) {
-        // Bulk API 사용
-        let request = AnalystRecommendationBulk_API.Request(apikey: fmpAPIKey)
-        let urlString = "\(AnalystRecommendationBulk_API.endPoint)?apikey=\(request.apikey)"
-        
-        guard let url = URL(string: urlString) else {
-            print("❌ Bulk API URL 생성 실패")
+        guard !trackedSymbols.isEmpty else {
+            print("⚠️ 조회할 종목이 없습니다")
             completion()
             return
         }
         
-        print("📡 Bulk API 호출: \(urlString)")
+        print("🔍 개별 종목 애널리스트 데이터 로드 시작 (무료 플랜)")
+        print("📋 조회할 종목: \(trackedSymbols)")
         
-        URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
-            defer { completion() }
+        let group = DispatchGroup()
+        var successCount = 0
+        var errorCount = 0
+        
+        // 각 종목에 대해 개별적으로 API 호출
+        for symbol in trackedSymbols {
+            group.enter()
+            loadIndividualAnalystData(symbol: symbol) { [weak self] result in
+                defer { group.leave() }
+                
+                switch result {
+                case .success(let recommendation):
+                    DispatchQueue.main.async {
+                        guard let self = self,
+                              let index = self.stocks.firstIndex(where: { $0.symbol == symbol }) else {
+                            return
+                        }
+                        
+                        self.stocks[index].analystData = recommendation
+                        successCount += 1
+                        print("✅ \(symbol) 애널리스트 데이터 업데이트 완료")
+                        
+                        // 데이터 확인 로그
+                        if let targetPrice = recommendation.analystTargetPrice {
+                            print("   📊 목표가: $\(targetPrice)")
+                        }
+                        print("   📈 평가: \(recommendation.averageRating)")
+                    }
+                    
+                case .failure(let error):
+                    errorCount += 1
+                    print("❌ \(symbol) 애널리스트 데이터 로드 실패: \(error.localizedDescription)")
+                }
+            }
             
+            // API 호출 간격 (무료 플랜 rate limit 고려)
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        
+        group.notify(queue: .main) {
+            print("📊 애널리스트 데이터 로드 완료: 성공 \(successCount)개, 실패 \(errorCount)개")
+            completion()
+        }
+    }
+    
+    private func loadIndividualAnalystData(symbol: String, completion: @escaping (Result<AnalystRecommendation, Error>) -> Void) {
+        // Grade API v3 사용 (무료 플랜에서 확실히 지원)
+        let request = AnalystRecommendation_API.Request(symbol: symbol, apikey: fmpAPIKey)
+        let urlString = "\(AnalystRecommendation_API.endPoint)/\(request.symbol)?limit=10&apikey=\(request.apikey)"
+        
+        guard let url = URL(string: urlString) else {
+            completion(.failure(NSError(domain: "URLError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
+            return
+        }
+        
+        print("📡 \(symbol) 애널리스트 등급 데이터 조회: \(urlString)")
+        
+        URLSession.shared.dataTask(with: url) { data, response, error in
             if let error = error {
-                print("❌ 애널리스트 벌크 데이터 로드 실패: \(error.localizedDescription)")
+                completion(.failure(error))
                 return
             }
             
             guard let data = data else {
-                print("❌ 애널리스트 벌크 데이터 없음")
+                completion(.failure(NSError(domain: "DataError", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data received"])))
                 return
             }
             
-            // 응답 로깅
+            // 응답 로깅 (처음 300자만)
             if let responseString = String(data: data, encoding: .utf8) {
-                print("📊 Bulk API 응답 (처음 500자): \(String(responseString.prefix(500)))")
+                print("📊 \(symbol) API 응답: \(String(responseString.prefix(300)))")
+                
+                // 에러 메시지 체크
+                if responseString.contains("Error Message") || responseString.contains("Exclusive Endpoint") {
+                    let errorMsg = "API 엔드포인트가 현재 플랜에서 지원되지 않습니다"
+                    print("⚠️ \(symbol): \(errorMsg)")
+                    completion(.failure(NSError(domain: "APIError", code: -1, userInfo: [NSLocalizedDescriptionKey: errorMsg])))
+                    return
+                }
+                
+                // 빈 배열 체크
+                if responseString.trimmingCharacters(in: .whitespacesAndNewlines) == "[]" {
+                    print("ℹ️ \(symbol): 애널리스트 등급 데이터 없음")
+                    completion(.failure(NSError(domain: "NoDataError", code: -1, userInfo: [NSLocalizedDescriptionKey: "No analyst grade data available"])))
+                    return
+                }
             }
             
             do {
-                let bulkResponses = try JSONDecoder().decode([AnalystRecommendationBulk_API.Response].self, from: data)
-                print("✅ 벌크 응답 파싱 성공: \(bulkResponses.count)개 종목")
+                // Grade API v3 응답 파싱 (배열 형태)
+                let gradeResponses = try JSONDecoder().decode([AnalystRecommendation_API.Response].self, from: data)
                 
-                // 현재 앱에서 사용하는 종목들만 필터링
-                let currentSymbols = self?.stocks.map { $0.symbol } ?? []
-                let filteredResponses = bulkResponses.filter { response in
-                    currentSymbols.contains(response.symbol)
-                }
-                
-                print("📋 현재 앱 종목 중 데이터 있는 종목: \(filteredResponses.map { $0.symbol })")
-                
-                DispatchQueue.main.async {
-                    guard let self = self else { return }
+                if let firstGrade = gradeResponses.first {
+                    print("✅ \(symbol) 등급 데이터 파싱 성공: \(gradeResponses.count)개 등급")
                     
-                    // Bulk API 응답을 AnalystRecommendation으로 변환하여 적용
-                    for bulkResponse in filteredResponses {
-                        if let index = self.stocks.firstIndex(where: { $0.symbol == bulkResponse.symbol }) {
-                            let recommendation = AnalystRecommendation(from: bulkResponse)
-                            self.stocks[index].analystData = recommendation
-                            print("✅ \(bulkResponse.symbol) 애널리스트 데이터 업데이트 완료")
-                            
-                            // 데이터 확인 로그
-                            if let targetPrice = recommendation.analystTargetPrice {
-                                print("   📊 목표가: $\(targetPrice)")
-                            }
-                            print("   📈 평가: \(recommendation.averageRating)")
-                        }
-                    }
+                    let recommendation = AnalystRecommendation(from: firstGrade, symbol: symbol)
+                    completion(.success(recommendation))
+                } else {
+                    print("ℹ️ \(symbol): 등급 데이터 배열이 비어있음")
+                    completion(.failure(NSError(domain: "NoDataError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Empty analyst grades array"])))
                 }
                 
             } catch {
-                print("❌ 애널리스트 벌크 JSON 파싱 실패: \(error)")
+                print("❌ \(symbol) JSON 파싱 실패: \(error)")
+                
+                // 원시 응답 출력으로 디버깅 도움
                 if let responseString = String(data: data, encoding: .utf8) {
-                    print("❌ 응답 데이터: \(responseString)")
+                    print("❌ 파싱 실패한 원시 데이터: \(responseString)")
                 }
+                
+                completion(.failure(error))
             }
         }.resume()
     }
@@ -736,15 +855,20 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
             return
         }
         
+        guard !trackedSymbols.isEmpty else {
+            print("⚠️ 조회할 종목이 없습니다")
+            return
+        }
+        
         let group = DispatchGroup()
         
-        for stock in stocks {
+        for symbol in trackedSymbols {
             group.enter()
-            fetchStockQuote(symbol: stock.symbol) { [weak self] quote in
+            fetchStockQuote(symbol: symbol) { [weak self] quote in
                 defer { group.leave() }
                 
                 guard let self = self,
-                      let index = self.stocks.firstIndex(where: { $0.symbol == stock.symbol }) else {
+                      let index = self.stocks.firstIndex(where: { $0.symbol == symbol }) else {
                     return
                 }
                 
@@ -754,7 +878,7 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
                     self.stocks[index].priceChange = quote.change
                     self.stocks[index].priceChangePercent = quote.changePercent
                     
-                    print("📊 \(stock.symbol): $\(oldPrice) → $\(quote.currentPrice) (\(quote.changePercent)%)")
+                    print("📊 \(symbol): $\(oldPrice) → $\(quote.currentPrice) (\(quote.changePercent)%)")
                 }
             }
         }
@@ -768,13 +892,15 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
     
     private func fetchStockQuote(symbol: String, completion: @escaping (StockQuote) -> Void) {
         // API 모델 사용
-        let request = FinnhubQuoteAPI.Request(symbol: symbol, token: finnhubAPIKey)
-        let urlString = "\(FinnhubQuoteAPI.endPoint)?symbol=\(request.symbol)&token=\(request.token)"
+        let request = FinnhubQuote_API.Request(symbol: symbol, token: finnhubAPIKey)
+        let urlString = "\(FinnhubQuote_API.endPoint)?symbol=\(request.symbol)&token=\(request.token)"
         
         guard let url = URL(string: urlString) else {
             print("❌ \(symbol) URL 생성 실패")
             return
         }
+        
+        print("DEBUG: fetchStockQuote > url = \(url.absoluteString)")
         
         URLSession.shared.dataTask(with: url) { data, response, error in
             if let error = error {
@@ -788,7 +914,7 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
             }
             
             do {
-                let apiResponse = try JSONDecoder().decode(FinnhubQuoteAPI.Response.self, from: data)
+                let apiResponse = try JSONDecoder().decode(FinnhubQuote_API.Response.self, from: data)
                 let quote = StockQuote(
                     symbol: symbol,
                     currentPrice: apiResponse.c,
@@ -815,6 +941,7 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
     }
 }
 
+// MARK: - URLSessionWebSocketDelegate Extension
 extension StockDataManager {
     
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
@@ -896,5 +1023,4 @@ extension StockDataManager {
             }
         }
     }
-    
 }

@@ -5,8 +5,8 @@
 //  Created by DY on 6/9/25.
 //
 
-/// 주식 실시간 시세 조회 API
-struct FinnhubQuoteAPI: Codable {
+/// (WebSocket) 주식 실시간 시세 조회 API
+struct FinnhubQuote_API: Codable {
     
     static let endPoint = "https://finnhub.io/api/v1/quote"
     
