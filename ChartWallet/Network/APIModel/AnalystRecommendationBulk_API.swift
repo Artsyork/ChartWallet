@@ -5,7 +5,9 @@
 //  Created by DY on 6/9/25.
 //
 
+/// 애널리스트 추천 정보 종합 조회 API
 struct AnalystRecommendationBulk_API: Codable {
+    
     static let endPoint = "https://financialmodelingprep.com/api/v4/upgrades-downgrades-consensus-bulk"
     
     struct Request: Codable {
@@ -26,6 +28,7 @@ struct AnalystRecommendationBulk_API: Codable {
     }
     
     struct Path: Codable {
-        // Bulk API는 별도 path가 필요없음
+        
     }
+    
 }
