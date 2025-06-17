@@ -29,9 +29,22 @@
 		315C58952DF110100053FDC7 /* ChartWalletUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ChartWalletUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		315C5A842E013EDF0053FDC7 /* Exceptions for "ChartWallet" folder in "ChartWallet" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 315C587A2DF1100F0053FDC7 /* ChartWallet */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		315C587D2DF1100F0053FDC7 /* ChartWallet */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				315C5A842E013EDF0053FDC7 /* Exceptions for "ChartWallet" folder in "ChartWallet" target */,
+			);
 			path = ChartWallet;
 			sourceTree = "<group>";
 		};
@@ -399,7 +412,8 @@
 				DEVELOPMENT_TEAM = NU8G5ASQP7;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
+				INFOPLIST_FILE = ChartWallet/Info.plist;
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -430,7 +444,8 @@
 				DEVELOPMENT_TEAM = NU8G5ASQP7;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
+				INFOPLIST_FILE = ChartWallet/Info.plist;
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

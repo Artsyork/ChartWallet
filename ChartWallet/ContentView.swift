@@ -12,7 +12,7 @@ struct ContentView: View {
     @State private var selectedStock: StockItem?
     
     var body: some View {
-        MainTabView()
+        UpdatedMainTabView()
     }
 }
 
