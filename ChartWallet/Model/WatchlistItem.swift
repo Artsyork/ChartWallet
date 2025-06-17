@@ -8,7 +8,7 @@
 import Foundation
 
 /// 관심 종목 모델
-struct WatchlistItem: Identifiable, Codable {
+struct WatchlistItem: Identifiable, Codable, Equatable {
     /// 고유 식별자
     var id = UUID()
     /// 주식 심볼
@@ -25,5 +25,9 @@ struct WatchlistItem: Identifiable, Codable {
         self.name = name
         self.addedDate = Date()
         self.sortOrder = sortOrder
+    }
+    
+    static func ==(lhs: Self, rhs: Self) -> Bool {
+        return lhs.symbol == rhs.symbol && lhs.name == rhs.name
     }
 }

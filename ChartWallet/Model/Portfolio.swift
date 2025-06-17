@@ -8,7 +8,7 @@
 import Foundation
 
 /// 포트폴리오 모델
-struct Portfolio: Identifiable, Codable {
+struct Portfolio: Identifiable, Codable, Equatable {
     /// 고유 식별자
     var id = UUID()
     /// 주식 심볼
@@ -41,5 +41,9 @@ struct Portfolio: Identifiable, Codable {
     func profitLossPercent(currentPrice: Double) -> Double {
         guard totalInvestment > 0 else { return 0 }
         return (profitLoss(currentPrice: currentPrice) / totalInvestment) * 100
+    }
+    
+    static func ==(lhs: Self, rhs: Self) -> Bool {
+        return lhs.symbol == rhs.symbol && lhs.name == rhs.name
     }
 }

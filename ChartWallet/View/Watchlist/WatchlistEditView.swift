@@ -15,15 +15,30 @@ struct WatchlistEditView: View {
     @State private var newCompanyName = ""
     @State private var showingAlert = false
     @State private var alertMessage = ""
+    @State private var showingStockSearch = false
     
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
                 // 새 종목 추가 섹션
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("새 종목 추가")
-                        .font(.headline)
-                        .fontWeight(.semibold)
+                    HStack {
+                        Text("새 종목 추가")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                        
+                        Spacer()
+                        
+                        Button("검색으로 추가") {
+                            showingStockSearch = true
+                        }
+                        .font(.caption)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.green)
+                        .foregroundColor(.white)
+                        .cornerRadius(6)
+                    }
                     
                     VStack(spacing: 12) {
                         TextField("종목 코드 (예: NVDA)", text: $newSymbol)
@@ -33,7 +48,7 @@ struct WatchlistEditView: View {
                         TextField("회사명 (예: NVIDIA Corp.)", text: $newCompanyName)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                         
-                        Button("관심목록에 추가") {
+                        Button("수동으로 추가") {
                             addToWatchlist()
                         }
                         .disabled(newSymbol.isEmpty || newCompanyName.isEmpty)
@@ -111,6 +126,12 @@ struct WatchlistEditView: View {
                 Button("확인") { }
             } message: {
                 Text(alertMessage)
+            }
+            .sheet(isPresented: $showingStockSearch) {
+                StockSearchView(
+                    portfolioManager: portfolioManager,
+                    stockManager: StockDataManager()
+                )
             }
         }
     }

@@ -12,11 +12,18 @@ struct HomeView: View {
     @ObservedObject var portfolioManager: PortfolioManager
     @State private var selectedStock: StockItem?
     @State private var showingAddToWatchlist = false
+    @State private var showingStockSearch = false
     
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
+                    // 검색 바 (탭하면 검색 화면으로 이동)
+                    SearchBarPlaceholder {
+                        showingStockSearch = true
+                    }
+                    .padding(.horizontal)
+                    
                     // 연결 상태 헤더
                     ConnectionHeaderView(
                         status: stockManager.connectionStatus,
@@ -93,6 +100,12 @@ struct HomeView: View {
         }
         .sheet(isPresented: $showingAddToWatchlist) {
             WatchlistEditView(portfolioManager: portfolioManager)
+        }
+        .sheet(isPresented: $showingStockSearch) {
+            StockSearchView(
+                portfolioManager: portfolioManager,
+                stockManager: stockManager
+            )
         }
     }
 }
