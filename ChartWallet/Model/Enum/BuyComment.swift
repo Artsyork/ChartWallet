@@ -26,6 +26,17 @@ enum BuyComment: String {
         }
     }
     
+    static func create(string: String) -> Self {
+        switch string {
+        case "스트롱 바이": return .veryGood
+        case "바이": return .good
+        case "뉴트럴": return .stay
+        case "셀": return .sell
+        case "스트롱 셀": return .verySell
+        default: return .none
+        }
+    }
+    
     var rawKr: String {
         switch self {
         case .veryGood: return "스트롱 바이"

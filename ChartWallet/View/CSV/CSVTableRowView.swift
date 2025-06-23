@@ -8,7 +8,8 @@
 import SwiftUI
 
 // MARK: - CSV 테이블 행
-struct CSVTableRowView: View {let stock: ExcelStockData
+struct CSVTableRowView: View {
+    let stock: ExcelStockData
     
     var body: some View {
         HStack(spacing: 8) {
@@ -25,59 +26,34 @@ struct CSVTableRowView: View {let stock: ExcelStockData
                         .font(.caption2)
                         .foregroundColor(.secondary)
                         .lineLimit(1)
+                    Text(formatUploadDate(stock.uploadDate))
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
                 }
             }
             .frame(width: 80, alignment: .leading)
             
-            // 현재가
+            // 현재가/목표가
             VStack(alignment: .trailing, spacing: 2) {
-                if let usdPrice = stock.currentPriceUSD {
-                    Text("$\(usdPrice, specifier: "%.2f")")
-                        .font(.caption)
-                        .fontWeight(.medium)
-                } else if let krwPrice = stock.currentPriceKRW {
-                    Text("₩\(krwPrice, specifier: "%.0f")")
-                        .font(.caption)
-                        .fontWeight(.medium)
-                } else {
-                    Text("--")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+                Text(stock.formattedCurrentPrice)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                
+                Text(stock.formattedTargetPrice)
+                    .font(.caption)
+                    .fontWeight(.medium)
             }
             .frame(width: 60, alignment: .trailing)
             
-            // 애널리스트 목표가 (원 단위 값)
-            VStack(alignment: .trailing, spacing: 2) {
-                if let rating = stock.analystRating {
-                    // 원 단위 값을 목표가로 표시
-                    if let krwValue = Double(rating.replacingOccurrences(of: ",", with: "").replacingOccurrences(of: "원", with: "")) {
-                        Text("₩\(krwValue, specifier: "%.0f")")
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(.blue)
-                    } else {
-                        Text("--")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                } else {
-                    Text("--")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-            .frame(width: 60, alignment: .trailing)
-            
-            // 애널리스트 평가 (목표가에 있던 값)
+            // 애널리스트 평가
             VStack {
-                if let targetPrice = stock.analystTargetPrice {
+                if let rating = stock.analystRating {
                     // 목표가 값을 평가로 표시 (수치에 따른 평가)
-                    let rating = evaluateRating(targetPrice)
+                    
                     Text(rating)
                         .font(.caption2)
                         .fontWeight(.semibold)
-                        .foregroundColor(ratingColorFromValue(targetPrice))
+                        .foregroundColor(stock.formatBuyComment.color)
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
                         .minimumScaleFactor(0.7)
@@ -92,7 +68,7 @@ struct CSVTableRowView: View {let stock: ExcelStockData
             // 예상 수익률
             VStack(alignment: .trailing) {
                 if let expectedReturn = stock.expectedReturn {
-                    Text("\(expectedReturn, specifier: "%.1f")%")
+                    Text("\(expectedReturn, specifier: "%.2f")%")
                         .font(.caption)
                         .fontWeight(.semibold)
                         .foregroundColor(expectedReturn >= 0 ? .green : .red)
@@ -101,14 +77,6 @@ struct CSVTableRowView: View {let stock: ExcelStockData
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-            }
-            .frame(width: 50, alignment: .trailing)
-            
-            // 업로드 일시 (날짜만)
-            VStack(alignment: .trailing) {
-                Text(formatUploadDate(stock.uploadDate))
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
             }
             .frame(width: 50, alignment: .trailing)
         }

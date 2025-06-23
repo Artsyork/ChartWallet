@@ -20,17 +20,10 @@ struct ExcelDataCardView: View {
                 .multilineTextAlignment(.leading)
             
             // 현재가
-            if let usdPrice = stock.currentPriceUSD {
-                Text("$\(usdPrice, specifier: "%.2f")")
-                    .font(.callout)
-                    .fontWeight(.bold)
-                    .foregroundColor(.primary)
-            } else if let krwPrice = stock.currentPriceKRW {
-                Text("₩\(krwPrice, specifier: "%.0f")")
-                    .font(.callout)
-                    .fontWeight(.bold)
-                    .foregroundColor(.primary)
-            }
+            Text(stock.formattedCurrentPrice)
+                .font(.callout)
+                .fontWeight(.bold)
+                .foregroundColor(.primary)
             
             // 섹터
             if let sector = stock.sector {

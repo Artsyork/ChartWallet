@@ -7,7 +7,8 @@
 
 import SwiftUI
 
-struct CSVDataView: View { @ObservedObject var excelManager: ExcelImportManager
+struct CSVDataView: View {
+    @ObservedObject var excelManager: ExcelImportManager
     @ObservedObject var portfolioManager: PortfolioManager
     @ObservedObject var stockManager: StockDataManager
     
@@ -19,18 +20,18 @@ struct CSVDataView: View { @ObservedObject var excelManager: ExcelImportManager
     @State private var isAscending = true
     
     enum SortOption: String, CaseIterable {
-        case seq = "순번"
-        case companyName = "종목명"
-        case currentPrice = "현재가"
-        case targetPrice = "목표가"
-        case expectedReturn = "예상 수익률"
-        case analystRating = "애널리스트 평가"
+        case seq = "순번" // 0
+        case companyName = "종목명" // 1
+        case currentPrice = "현재가" // 2
+        case analystRating = "애널리스트 평가" // 5
+        case targetPrice = "목표가" // 6
+        case expectedReturn = "예상 수익률" // 7
         case uploadDate = "업로드 일시"
     }
     
     var filteredAndSortedStocks: [ExcelStockData] {
         var stocks = excelManager.importedStocks
-        
+    
         // 검색 필터
         if !searchText.isEmpty {
             stocks = stocks.filter { stock in
@@ -49,8 +50,8 @@ struct CSVDataView: View { @ObservedObject var excelManager: ExcelImportManager
             case .companyName:
                 result = stock1.companyName < stock2.companyName
             case .currentPrice:
-                let price1 = stock1.currentPriceUSD ?? stock1.currentPriceKRW ?? 0
-                let price2 = stock2.currentPriceUSD ?? stock2.currentPriceKRW ?? 0
+                let price1 = stock1.currentPrice ?? 0
+                let price2 = stock2.currentPrice ?? 0
                 result = price1 < price2
             case .targetPrice:
                 let target1 = stock1.analystTargetPrice ?? 0

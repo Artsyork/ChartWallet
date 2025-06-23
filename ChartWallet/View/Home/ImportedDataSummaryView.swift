@@ -87,8 +87,8 @@ struct ImportedDataSummaryView: View {
                                     .foregroundColor(.blue)
                             }
                             
-                            if let price = stock.currentPriceKRW {
-                                Text("₩\(price, specifier: "%.0f")")
+                            if let price = stock.currentPrice {
+                                Text(stock.formattedCurrentPrice)
                                     .font(.caption)
                                     .foregroundColor(.primary)
                             }
@@ -151,8 +151,8 @@ struct ImportedDataSummaryView: View {
                                 .foregroundColor(.secondary)
                         }
                         
-                        if let price = stock.currentPriceKRW {
-                            Text("₩\(price, specifier: "%.0f")")
+                        if let price = stock.currentPrice {
+                            Text(stock.formattedCurrentPrice)
                                 .font(.callout)
                                 .fontWeight(.medium)
                         }

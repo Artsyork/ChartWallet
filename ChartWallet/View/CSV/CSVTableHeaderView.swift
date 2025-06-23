@@ -17,13 +17,7 @@ struct CSVTableHeaderView: View {
                 .foregroundColor(.secondary)
                 .frame(width: 80, alignment: .leading)
             
-            Text("현재가")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundColor(.secondary)
-                .frame(width: 60, alignment: .trailing)
-            
-            Text("목표가")
+            Text("현재가/목표가")
                 .font(.caption)
                 .fontWeight(.semibold)
                 .foregroundColor(.secondary)
@@ -36,12 +30,6 @@ struct CSVTableHeaderView: View {
                 .frame(width: 50, alignment: .center)
             
             Text("수익률")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundColor(.secondary)
-                .frame(width: 50, alignment: .trailing)
-            
-            Text("업로드")
                 .font(.caption)
                 .fontWeight(.semibold)
                 .foregroundColor(.secondary)

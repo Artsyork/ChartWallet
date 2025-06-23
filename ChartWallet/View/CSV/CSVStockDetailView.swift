@@ -65,24 +65,12 @@ struct CSVStockDetailView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                         
                         VStack(spacing: 12) {
-                            if let usdPrice = stock.currentPriceUSD {
-                                HStack {
-                                    Text("현재가 (USD)")
-                                        .foregroundColor(.secondary)
-                                    Spacer()
-                                    Text("$\(usdPrice, specifier: "%.2f")")
-                                        .fontWeight(.semibold)
-                                }
-                            }
-                            
-                            if let krwPrice = stock.currentPriceKRW {
-                                HStack {
-                                    Text("현재가 (KRW)")
-                                        .foregroundColor(.secondary)
-                                    Spacer()
-                                    Text("₩\(krwPrice, specifier: "%.0f")")
-                                        .fontWeight(.semibold)
-                                }
+                            HStack {
+                                Text(stock.country == .KR ? "현재가 (KRW)" : "현재가 (USD)")
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Text(stock.formattedCurrentPrice)
+                                    .fontWeight(.semibold)
                             }
                             
                             if let week52High = stock.week52High {
@@ -127,7 +115,7 @@ struct CSVStockDetailView: View {
                                         Text("목표가 (KRW)")
                                             .foregroundColor(.secondary)
                                         Spacer()
-                                        Text("₩\(krwValue, specifier: "%.0f")")
+                                        Text("\(krwValue, specifier: "%.0f")원")
                                             .fontWeight(.semibold)
                                             .foregroundColor(.blue)
                                     }
@@ -283,12 +271,4 @@ struct CSVStockDetailView: View {
         }
     }
     
-}
-
-#Preview {
-//    CSVDataView(
-//        excelManager: ExcelImportManager(),
-//        portfolioManager: PortfolioManager(),
-//        stockManager: StockDataManager()
-//    )
 }

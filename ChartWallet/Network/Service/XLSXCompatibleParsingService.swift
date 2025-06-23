@@ -8,6 +8,187 @@
 import Foundation
 
 final class XLSXCompatibleParsingService {
+
+    /// 주식 라인 파싱 (ExcelStockDataKr 모델에 맞춤)
+    private static func parseStockLine(_ line: String, lineNumber: Int) throws -> ExcelStockData? {
+        let columns = smartSplitLine(line)
+        
+        print("🔍 라인 \(lineNumber): \(columns.count)개 컬럼")
+        print("   처음 12개: \(Array(columns.prefix(12)))")
+        
+        guard columns.count >= 2 else {
+            print("⚠️ 컬럼 수 부족")
+            return nil
+        }
+        
+        // 빈 라인 스킵
+        if columns.allSatisfy({ $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            return nil
+        }
+        
+        // 데이터 추출
+        let seq = safeParseInt(columns[safe: 0]) ?? lineNumber
+        let companyName = cleanString(columns[safe: 1])
+        
+        // 회사명 검증
+        guard let validCompanyName = companyName,
+              validCompanyName.count > 1 else {
+            print("⚠️ 회사명 없음")
+            return nil
+        }
+        
+        // 예상 수익률 디버깅 (8번째 컬럼만 특별 처리)
+        if let returnColumn = columns[safe: 8] {
+            print("📊 예상 수익률 원본: '\(returnColumn)'")
+            let parsedReturn = safeParsePercentage(returnColumn) // 퍼센트 전용 파싱
+            print("📊 파싱된 수익률: \(parsedReturn ?? 0)%")
+        }
+        
+        // ExcelStockDataKr 생성 (새로운 순서에 맞춤)
+        return ExcelStockData(
+            seq: seq,                                              // 1. 순번
+            companyName: validCompanyName,                         // 2. 회사명
+            currentPrice: safeParseDouble(columns[safe: 2]),       // 3. 현재가 (원화)
+            sector: cleanString(columns[safe: 3]),                 // 4. 섹터
+            industry: cleanString(columns[safe: 4]),               // 5. 산업
+            analystRating: cleanString(columns[safe: 5]),          // 6. 애널리스트 평가
+            analystTargetPrice: safeParseDouble(columns[safe: 6]), // 7. 애널리스트 목표가
+            expectedReturn: safeParsePercentage(columns[safe: 7]), // 8. 예상 수익률 (퍼센트 파싱)
+            week52High: safeParseDouble(columns[safe: 8]),         // 9. 52주 최고가
+            week52Low: safeParseDouble(columns[safe: 9]),          // 10. 52주 최저가
+            allTimeHigh: safeParseDouble(columns[safe: 10]),       // 11. 사상 최고가
+            country: .KR                                           // 기본값: 한국
+        )
+    }
+    
+    /// 퍼센트 전용 파싱 함수 (예상 수익률 컬럼 전용)
+    private static func safeParsePercentage(_ string: String?) -> Double? {
+        guard let cleaned = cleanString(string) else {
+            return nil
+        }
+        
+        // 1단계: 기본 정리
+        var numberString = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // 2단계: 따옴표 제거
+        numberString = numberString.replacingOccurrences(of: "\"", with: "")
+                                  .replacingOccurrences(of: "'", with: "")
+        
+        // 3단계: % 기호와 관련 문자 제거
+        numberString = numberString.replacingOccurrences(of: "%", with: "")
+                                  .replacingOccurrences(of: "％", with: "") // 전각 퍼센트
+                                  .replacingOccurrences(of: "percent", with: "", options: .caseInsensitive)
+                                  .replacingOccurrences(of: "퍼센트", with: "")
+                                  .replacingOccurrences(of: "프로", with: "")
+        
+        // 4단계: 공백과 쉼표 제거
+        numberString = numberString.replacingOccurrences(of: " ", with: "")
+                                  .replacingOccurrences(of: ",", with: "")
+                                  .replacingOccurrences(of: "\t", with: "")
+        
+        // 5단계: 기타 불필요한 문자 제거
+        numberString = numberString.replacingOccurrences(of: "(", with: "")
+                                  .replacingOccurrences(of: ")", with: "")
+                                  .replacingOccurrences(of: "[", with: "")
+                                  .replacingOccurrences(of: "]", with: "")
+        
+        // 6단계: 최종 정리
+        numberString = numberString.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // 빈 문자열 체크
+        guard !numberString.isEmpty else {
+            return nil
+        }
+        
+        // Double 변환 시도
+        return Double(numberString)
+    }
+
+    /// 개선된 일반 숫자 파싱 (% 기호도 처리)
+    private static func safeParseDouble(_ string: String?) -> Double? {
+        guard let cleaned = cleanString(string) else { return nil }
+        
+        // % 기호가 포함되어 있으면 퍼센트로 처리
+        if cleaned.contains("%") || cleaned.contains("％") {
+            return safeParsePercentage(string)
+        }
+        
+        let numberString = cleaned.replacingOccurrences(of: ",", with: "")
+                                 .replacingOccurrences(of: "원", with: "")
+                                 .replacingOccurrences(of: "$", with: "")
+                                 .replacingOccurrences(of: " ", with: "")
+                                 .trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        return Double(numberString)
+    }
+
+    /// 개선된 문자열 정리
+    private static func cleanString(_ string: String?) -> String? {
+        guard let string = string?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !string.isEmpty else { return nil }
+        
+        // 빈 값들
+        let emptyValues = ["-", "--", "N/A", "NULL", "없음", "n/a", "null", "N/a"]
+        let lowercased = string.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if emptyValues.contains(lowercased) { return nil }
+        
+        // 기본 정리
+        let cleaned = string.replacingOccurrences(of: "\"", with: "")
+                           .replacingOccurrences(of: "'", with: "")
+                           .trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        return cleaned.isEmpty ? nil : cleaned
+    }
+
+    /// 스마트 라인 분리 (개선된 CSV 파싱)
+    private static func smartSplitLine(_ line: String) -> [String] {
+        // CSV 우선 처리
+        if line.contains(",") {
+            return parseCSVLine(line)
+        } else if line.contains("\t") {
+            return line.components(separatedBy: "\t")
+        } else if line.contains(";") {
+            return line.components(separatedBy: ";")
+        } else if line.contains("|") {
+            return line.components(separatedBy: "|")
+        } else {
+            return line.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        }
+    }
+
+    /// 향상된 CSV 라인 파싱 (따옴표와 % 처리)
+    private static func parseCSVLine(_ line: String) -> [String] {
+        var columns: [String] = []
+        var currentColumn = ""
+        var insideQuotes = false
+        
+        for char in line {
+            if char == "\"" {
+                insideQuotes.toggle()
+            } else if char == "," && !insideQuotes {
+                // 컬럼 완료 - 정리해서 추가
+                let cleanedColumn = currentColumn.trimmingCharacters(in: .whitespacesAndNewlines)
+                columns.append(cleanedColumn)
+                currentColumn = ""
+            } else {
+                currentColumn.append(char)
+            }
+        }
+        
+        // 마지막 컬럼 추가
+        let cleanedColumn = currentColumn.trimmingCharacters(in: .whitespacesAndNewlines)
+        columns.append(cleanedColumn)
+        
+        // 결과 로깅
+        print("📝 CSV 파싱 결과: \(columns.count)개 컬럼")
+        for (i, col) in columns.enumerated() {
+            if col.contains("%") {
+                print("   [\(i)]: '\(col)' ← 퍼센트 포함!")
+            }
+        }
+        
+        return columns
+    }
     
     /// XLSX 호환 파일 파싱
     static func parseExcelFile(at url: URL) throws -> [ExcelStockData] {
@@ -313,100 +494,6 @@ final class XLSXCompatibleParsingService {
         return headerKeywords.contains { line.localizedCaseInsensitiveContains($0) }
     }
     
-    /// 주식 라인 파싱
-    private static func parseStockLine(_ line: String, lineNumber: Int) throws -> ExcelStockData? {
-        let columns = smartSplitLine(line)
-        
-        print("🔍 라인 \(lineNumber): \(columns.count)개 컬럼")
-        print("   처음 5개: \(Array(columns.prefix(5)))")
-        
-        guard columns.count >= 2 else {
-            print("⚠️ 컬럼 수 부족")
-            return nil
-        }
-        
-        // 빈 라인 스킵
-        if columns.allSatisfy({ $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
-            return nil
-        }
-        
-        // 데이터 추출
-        let seq = safeParseInt(columns[safe: 0]) ?? lineNumber
-        let companyName = cleanString(columns[safe: 1])
-        
-        // 회사명 검증
-        guard let validCompanyName = companyName,
-              validCompanyName.count > 1 else {
-            print("⚠️ 회사명 없음")
-            return nil
-        }
-        
-        return ExcelStockData(
-            seq: seq,
-            companyName: validCompanyName,
-            currentPriceKRW: safeParseDouble(columns[safe: 2]),
-            currentPriceUSD: safeParseDouble(columns[safe: 3]),
-            sector: cleanString(columns[safe: 4]),
-            industry: cleanString(columns[safe: 5]),
-            analystRating: cleanString(columns[safe: 6]),
-            analystTargetPrice: safeParseDouble(columns[safe: 7]),
-            expectedReturn: safeParsePercentage(columns[safe: 8]),
-            week52High: safeParseDouble(columns[safe: 9]),
-            week52Low: safeParseDouble(columns[safe: 10]),
-            allTimeHigh: safeParseDouble(columns[safe: 11])
-        )
-    }
-    
-    /// 스마트 라인 분리
-    private static func smartSplitLine(_ line: String) -> [String] {
-        if line.contains(",") {
-            return parseCSVLine(line)
-        } else if line.contains("\t") {
-            return line.components(separatedBy: "\t")
-        } else if line.contains(";") {
-            return line.components(separatedBy: ";")
-        } else if line.contains("|") {
-            return line.components(separatedBy: "|")
-        } else {
-            return line.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
-        }
-    }
-    
-    /// CSV 라인 파싱
-    private static func parseCSVLine(_ line: String) -> [String] {
-        var columns: [String] = []
-        var currentColumn = ""
-        var insideQuotes = false
-        
-        for char in line {
-            if char == "\"" {
-                insideQuotes.toggle()
-            } else if char == "," && !insideQuotes {
-                columns.append(currentColumn.trimmingCharacters(in: .whitespacesAndNewlines))
-                currentColumn = ""
-            } else {
-                currentColumn.append(char)
-            }
-        }
-        
-        columns.append(currentColumn.trimmingCharacters(in: .whitespacesAndNewlines))
-        return columns
-    }
-    
-    /// 문자열 정리
-    private static func cleanString(_ string: String?) -> String? {
-        guard let string = string?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !string.isEmpty else { return nil }
-        
-        let emptyValues = ["-", "--", "N/A", "NULL", "없음"]
-        if emptyValues.contains(string) { return nil }
-        
-        let cleaned = string.replacingOccurrences(of: "\"", with: "")
-                           .trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        return cleaned.isEmpty ? nil : cleaned
-    }
-    
     /// 안전한 정수 파싱
     private static func safeParseInt(_ string: String?) -> Int? {
         guard let cleaned = cleanString(string) else { return nil }
@@ -418,23 +505,6 @@ final class XLSXCompatibleParsingService {
         return Int(numberString)
     }
     
-    /// 안전한 실수 파싱
-    private static func safeParseDouble(_ string: String?) -> Double? {
-        guard let cleaned = cleanString(string) else { return nil }
-        
-        let numberString = cleaned.replacingOccurrences(of: ",", with: "")
-                                 .replacingOccurrences(of: "원", with: "")
-                                 .replacingOccurrences(of: "$", with: "")
-                                 .replacingOccurrences(of: "%", with: "")
-                                 .replacingOccurrences(of: " ", with: "")
-        
-        return Double(numberString)
-    }
-    
-    /// 안전한 퍼센트 파싱
-    private static func safeParsePercentage(_ string: String?) -> Double? {
-        return safeParseDouble(string)
-    }
 }
 
 // MARK: - XLSX 전용 에러

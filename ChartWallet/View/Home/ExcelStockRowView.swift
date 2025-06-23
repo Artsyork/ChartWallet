@@ -36,19 +36,9 @@ struct ExcelStockRowView: View {
             
             // 현재가
             VStack(alignment: .trailing, spacing: 2) {
-                if let usdPrice = stock.currentPriceUSD {
-                    Text("$\(usdPrice, specifier: "%.2f")")
-                        .font(.caption)
-                        .fontWeight(.medium)
-                } else if let krwPrice = stock.currentPriceKRW {
-                    Text("₩\(krwPrice, specifier: "%.0f")")
-                        .font(.caption)
-                        .fontWeight(.medium)
-                } else {
-                    Text("--")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+                Text(stock.formattedCurrentPrice)
+                    .font(.caption)
+                    .fontWeight(.medium)
                 
                 if let rating = stock.analystRating {
                     Text(rating)
