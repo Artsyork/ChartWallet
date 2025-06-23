@@ -37,7 +37,7 @@ struct CSVTableHeaderView: View {
                     .frame(width: geometry.size.width * 0.2, alignment: .leading)
             }
         }
-        .frame(height: 20)
+        .frame(height: 16)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(Color(.systemGray5))

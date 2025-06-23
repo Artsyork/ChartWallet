@@ -40,6 +40,7 @@ struct CSVTableRowView: View {
                     Text(stock.formattedTargetPrice)
                         .font(.callout)
                         .fontWeight(.medium)
+                        .foregroundColor(stock.formatBuyComment.color)
                 }
                 .frame(width: geometry.size.width * 0.3, alignment: .trailing)
                 
