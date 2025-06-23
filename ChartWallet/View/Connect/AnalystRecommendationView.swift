@@ -23,7 +23,7 @@ struct AnalystRecommendationView: View {
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                     
-                    Text(recommendation.averageRating.rawValue)
+                    Text(recommendation.averageRating.kr)
                         .font(.title3)
                         .fontWeight(.semibold)
                         .foregroundColor(recommendation.averageRating.color)

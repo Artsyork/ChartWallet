@@ -54,7 +54,7 @@ struct StockCardView: View {
                 // 3. 애널리스트 평가
                 VStack(spacing: 2) {
                     if let analystData = stock.analystData {
-                        Text(analystData.averageRating.rawValue)
+                        Text(analystData.averageRating.kr)
                             .font(.caption)
                             .fontWeight(.semibold)
                             .foregroundColor(analystData.averageRating.color)

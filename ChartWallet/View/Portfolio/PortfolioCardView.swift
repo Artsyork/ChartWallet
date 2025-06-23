@@ -47,7 +47,7 @@ struct PortfolioCardView: View {
                     Spacer()
                     
                     if let analystData = currentStock?.analystData {
-                        Text(analystData.averageRating.rawValue)
+                        Text(analystData.averageRating.kr)
                             .font(.caption2)
                             .fontWeight(.semibold)
                             .foregroundColor(analystData.averageRating.color)

@@ -143,34 +143,3 @@ struct AnalystRecommendation: Codable {
                (analystRatingsStrongSell ?? 0)
     }
 }
-
-enum BuyComment: String {
-    case veryGood = "적극 구매"
-    case good = "구매"
-    case stay = "유지"
-    case sell = "판매"
-    case verySell = "적극 판매"
-    case none = "N/A"
-    
-    static func create(average: Double) -> Self {
-        switch average {
-        case 4.5...5.0: return .veryGood
-        case 3.5..<4.5: return .good
-        case 2.5..<3.5: return .stay
-        case 1.5..<2.5: return .sell
-        case 0.1..<1.5: return .verySell
-        default: return .none
-        }
-    }
-    
-    var color: Color {
-        switch self {
-        case .veryGood: return .green
-        case .good: return .mint
-        case .stay: return .yellow
-        case .sell: return .orange
-        case .verySell: return .red
-        case .none: return .secondary
-        }
-    }
-}

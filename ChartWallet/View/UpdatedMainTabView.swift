@@ -14,6 +14,7 @@ struct UpdatedMainTabView: View {
     
     var body: some View {
         TabView {
+            // 홈 탭 (API 데이터)
             UpdatedHomeView(
                 stockManager: stockManager,
                 portfolioManager: portfolioManager
@@ -23,6 +24,19 @@ struct UpdatedMainTabView: View {
                 Text("홈")
             }
             
+            // CSV 데이터 탭 (새로 추가)
+            CSVDataView(
+                excelManager: excelManager,
+                portfolioManager: portfolioManager,
+                stockManager: stockManager
+            )
+            .tabItem {
+                Image(systemName: "doc.text.fill")
+                Text("CSV 데이터")
+            }
+            .badge(excelManager.importedStocks.isEmpty ? 0 : excelManager.importedStocks.count)
+            
+            // 내 자산 탭
             UpdatedPortfolioView(
                 stockManager: stockManager,
                 portfolioManager: portfolioManager

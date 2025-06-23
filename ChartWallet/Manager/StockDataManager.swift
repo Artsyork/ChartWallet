@@ -60,7 +60,7 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
             }
             
             // 애널리스트 데이터 업데이트
-            loadAnalystData()
+            //loadAnalystData()
         }
     }
     
@@ -215,7 +215,7 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
         // 업데이트 시간이 되었는지 확인
         if now >= nextUpdate {
             print("🔄 애널리스트 데이터 업데이트 시작...")
-            loadAnalystData()
+            //loadAnalystData()
             
             // 다음 업데이트 시간 계산
             calculateNextUpdateTime()
@@ -282,15 +282,15 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
                 
                 if isValid {
                     print("✅ API 키 검증 완료, WebSocket 연결 시작")
-                    self.connectWebSocket()
+                    //self.connectWebSocket()
                 } else {
                     print("❌ API 키가 유효하지 않습니다. REST API로 전환합니다.")
-                    self.fetchLatestPricesViaREST()
+                    //self.fetchLatestPricesViaREST()
                 }
             }
         } else {
             print("⚠️ 미국 주식 시장 시간 외 - REST API로 주가 조회")
-            fetchLatestPricesViaREST()
+            //fetchLatestPricesViaREST()
         }
     }
     
@@ -406,7 +406,7 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
                 self.webSocketTask?.cancel()
                 
                 // REST API로 가격 데이터 가져오기
-                self.fetchLatestPricesViaREST()
+                //self.fetchLatestPricesViaREST()
             }
         }
         
@@ -479,7 +479,7 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
                 guard let self = self else { return }
                 print("🔄 시장 마감 - WebSocket에서 REST API로 전환")
                 self.disconnect()
-                self.fetchLatestPricesViaREST()
+                //self.fetchLatestPricesViaREST()
             }
         }
     }
@@ -822,7 +822,7 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
     // 수동 업데이트 (운영용)
     func forceUpdateAnalystData() {
         print("🔄 애널리스트 데이터 수동 업데이트...")
-        loadAnalystData()
+        //loadAnalystData()
         calculateNextUpdateTime()
     }
     
@@ -837,13 +837,13 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
             
             // WebSocket 연결이 없는 경우에만 REST API 호출
             if self.connectionStatus != .connected {
-                self.fetchLatestPricesViaREST()
+                //self.fetchLatestPricesViaREST()
             }
         }
         
         // 앱 시작 시 즉시 실행 (WebSocket 연결이 없는 경우)
         if connectionStatus != .connected {
-            fetchLatestPricesViaREST()
+            //fetchLatestPricesViaREST()
         }
     }
     
@@ -899,8 +899,6 @@ class StockDataManager: NSObject, ObservableObject, URLSessionWebSocketDelegate 
             print("❌ \(symbol) URL 생성 실패")
             return
         }
-        
-        print("DEBUG: fetchStockQuote > url = \(url.absoluteString)")
         
         URLSession.shared.dataTask(with: url) { data, response, error in
             if let error = error {
